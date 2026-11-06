@@ -15,6 +15,60 @@ import os
 import platform
 import folder_paths
 import comfy.model_management
+
+# ── Prompt enhancement (GGUF via llama-cpp, shared with QwenVL-Mod stack) ──
+_LLM_CACHE = {}
+
+def _gguf_dir():
+    for c in folder_paths.get_folder_paths("LLM") or []:
+        gg = os.path.join(c, "GGUF")
+        if os.path.isdir(gg):
+            return gg
+    return None
+
+def _load_llm(model_name):
+    if model_name in _LLM_CACHE:
+        return _LLM_CACHE[model_name]
+    from llama_cpp import Llama
+    d = _gguf_dir()
+    if not d:
+        raise RuntimeError("[LTXDirector] models/LLM/GGUF not found")
+    mmproj = os.path.join(d, "mmproj-BF16.gguf")
+    kwargs = dict(model_path=os.path.join(d, model_name), n_ctx=8192, n_gpu_layers=-1, verbose=False)
+    if os.path.isfile(mmproj):
+        try:
+            from llama_cpp.llama_chat_format import Llava16ChatHandler
+            kwargs["chat_handler"] = Llava16ChatHandler(clip_model_path=mmproj, verbose=False)
+        except Exception:
+            pass
+    llm = Llama(**kwargs)
+    _LLM_CACHE[model_name] = llm
+    return llm
+
+def _enhance_prompt(llm, system, text, max_tokens=1024, seed=0):
+    r = llm.create_chat_completion(
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": text}],
+        max_tokens=max_tokens, temperature=0.7, top_p=0.9, seed=seed,
+    )
+    return (r["choices"][0].get("message", {}).get("content", "") or "").strip()
+
+def _preset_text(name):
+    """Load a LTX text preset system prompt from QwenVL-Mod if present."""
+    try:
+        import sys
+        for mod in sys.path:
+            pj = os.path.join(mod, "ComfyUI-QwenVL-Mod", "presets_remote", "ltx.json")
+            if not os.path.isfile(pj):
+                pj = os.path.join(mod, "ComfyUI-QwenVL-Mod", "presets", "ltx.json")
+            if os.path.isfile(pj):
+                e = json.load(open(pj)).get("text", {}).get(name)
+                if isinstance(e, dict):
+                    return e.get("durations", {}).get("5s") or e.get("default", "")
+                return e or ""
+    except Exception:
+        pass
+    return ""
+
 from server import PromptServer
 from aiohttp import web
 
@@ -953,6 +1007,12 @@ class LTXDirector(io.ComfyNode):
                     "guide_strength", default="",
                     tooltip="Auto-populated from the timeline editor (comma-separated guide strengths for image segments).",
                 ),
+                io.Boolean.Input("enhance", default=False, optional=True,
+                    tooltip="Run the assembled prompt through the GGUF enhancer before generation."),
+                io.String.Input("enhancer_model", default="", optional=True,
+                    tooltip="GGUF filename in models/LLM/GGUF (e.g. Qwen3.5-9B...-Q6_K.gguf)."),
+                io.String.Input("enhancer_preset", default="LTX › SFW T2V", optional=True,
+                    tooltip="Preset name from presets/ltx.json text group (falls back to a generic enhancer)."),
                 io.Int.Input(
                     "custom_width", default=0, min=0, max=8192, step=1, optional=True,
                     tooltip="Target output width for all image segments. Set to 0 to use the original image width.",
@@ -990,6 +1050,7 @@ class LTXDirector(io.ComfyNode):
                 MotionGuideData.Output(display_name="motion_guide_data"),
                 io.Float.Output(display_name="frame_rate", tooltip="The frame rate used for the timeline."),
                 io.Audio.Output(display_name="combined_audio", tooltip="Combined timeline audio layout."),
+                io.String.Output(display_name="assembled_prompt", tooltip="Final prompt text used (post-enhance) — for debugging/viewing."),
             ],
         )
 
@@ -999,7 +1060,8 @@ class LTXDirector(io.ComfyNode):
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
-                use_custom_audio=False, inpaint_audio=True, use_custom_motion=True, override_audio=False) -> io.NodeOutput:
+                use_custom_audio=False, inpaint_audio=True, use_custom_motion=True, override_audio=False,
+                enhance=False, enhancer_model="", enhancer_preset="") -> io.NodeOutput:
 
         # Parse timeline data
         try:
@@ -1197,6 +1259,18 @@ class LTXDirector(io.ComfyNode):
         else:
             latent = optional_latent
 
+        if enhance and enhancer_model:
+            try:
+                llm = _load_llm(enhancer_model)
+                system = _preset_text(enhancer_preset) or ("You are a cinematic video prompt enhancer. "
+                    "Rewrite the user's rough ideas into polished prompts, preserving | as segment separator.")
+                enhanced_local = _enhance_prompt(llm, system, local_prompts or global_prompt)
+                if enhanced_local:
+                    local_prompts = enhanced_local
+                log.info(f"[LTXDirector] enhanced local_prompts: {repr(local_prompts[:120])}")
+            except Exception as e:
+                log.error(f"[LTXDirector] prompt enhance failed, using raw: {e}")
+
         patched, conditioning = _encode_relay(
             model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
         )
@@ -1368,7 +1442,7 @@ class LTXDirector(io.ComfyNode):
         guide_data["duration_frames"] = duration_frames
         guide_data["resize_method"] = resize_method
 
-        return io.NodeOutput(patched, conditioning, latent, audio_latent, guide_data, motion_guide_data, float(frame_rate), audio_out)
+        return io.NodeOutput(patched, conditioning, latent, audio_latent, guide_data, motion_guide_data, float(frame_rate), audio_out, f"{global_prompt} | {local_prompts}")
 
 
 NODE_CLASS_MAPPINGS = {
