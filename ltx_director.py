@@ -52,6 +52,32 @@ def _enhance_prompt(llm, system, text, max_tokens=1024, seed=0):
     )
     return (r["choices"][0].get("message", {}).get("content", "") or "").strip()
 
+def _gguf_choices():
+    d = _gguf_dir()
+    if d:
+        try:
+            files = sorted(f for f in os.listdir(d) if f.endswith(".gguf"))
+            if files:
+                return files
+        except Exception:
+            pass
+    return [""]
+
+def _preset_choices():
+    try:
+        import sys
+        for mod in sys.path:
+            pj = os.path.join(mod, "ComfyUI-QwenVL-Mod", "presets_remote", "ltx.json")
+            if not os.path.isfile(pj):
+                pj = os.path.join(mod, "ComfyUI-QwenVL-Mod", "presets", "ltx.json")
+            if os.path.isfile(pj):
+                names = sorted(json.load(open(pj)).get("text", {}).keys())
+                if names:
+                    return names
+    except Exception:
+        pass
+    return ["LTX › SFW T2V", "LTX › NSFW T2V", "LTX › Director"]
+
 def _preset_text(name):
     """Load a LTX text preset system prompt from QwenVL-Mod if present."""
     try:
@@ -1036,10 +1062,10 @@ class LTXDirector(io.ComfyNode):
                 ),
                 io.Boolean.Input("enhance", default=False, optional=True,
                     tooltip="Run the assembled prompt through the GGUF enhancer before generation."),
-                io.String.Input("enhancer_model", default="", optional=True,
-                    tooltip="GGUF filename in models/LLM/GGUF (e.g. Qwen3.5-9B...-Q6_K.gguf)."),
-                io.String.Input("enhancer_preset", default="LTX › SFW T2V", optional=True,
-                    tooltip="Preset name from presets/ltx.json text group (falls back to a generic enhancer)."),
+                io.Combo.Input("enhancer_model", options=_gguf_choices(), optional=True,
+                    tooltip="GGUF model in models/LLM/GGUF used for prompt enhancement."),
+                io.Combo.Input("enhancer_preset", options=_preset_choices(), default="LTX › Director", optional=True,
+                    tooltip="Enhancer preset (system prompt) applied to the assembled prompt."),
             ],
             outputs=[
                 io.Model.Output(display_name="model"),
