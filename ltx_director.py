@@ -984,8 +984,8 @@ class LTXDirector(io.ComfyNode):
                     tooltip="Toggle whether empty gaps in the audio track are inpainted with generated audio.",
                 ),
                 io.String.Input(
-                    "local_prompts", multiline=True, default="", force_input=True,
-                    tooltip="Segment prompts joined by | — auto-populated by the timeline editor, or wire an external prompt source (e.g. QwenVL).",
+                    "local_prompts", multiline=True, default="",
+                    tooltip="Auto-populated from the timeline editor.",
                 ),
                 io.String.Input(
                     "segment_lengths", default="",
