@@ -1010,10 +1010,6 @@ class LTXDirector(io.ComfyNode):
                     tooltip="Toggle whether empty gaps in the audio track are inpainted with generated audio.",
                 ),
                 io.String.Input(
-                    "local_prompts", multiline=True, default="",
-                    tooltip="Auto-populated from the timeline editor.",
-                ),
-                io.String.Input(
                     "segment_lengths", default="",
                     tooltip="Auto-populated from the timeline editor (pixel-space frame counts).",
                 ),
@@ -1082,7 +1078,7 @@ class LTXDirector(io.ComfyNode):
 
     @classmethod
     def execute(cls, model, clip, start_second, end_second, duration_seconds, start_frame, end_frame, duration_frames,
-                timeline_data, local_prompts, segment_lengths, global_prompt="", guide_strength="", epsilon=1e-3,
+                timeline_data, segment_lengths, global_prompt="", guide_strength="", epsilon=1e-3,
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
@@ -1107,6 +1103,13 @@ class LTXDirector(io.ComfyNode):
                 global_prompt = tdata.get("global_prompt", "")
 
         log.info(f"[LTXDirector] execute RECEIVED global_prompt: {repr(global_prompt)}")
+
+        # Build local_prompts from timeline segment prompts (| -joined), no widget/cache
+        _segs = tdata.get("motionSegments") or tdata.get("segments") or []
+        local_prompts = " | ".join(str(s.get("prompt") or "").strip() for s in _segs)
+        if not local_prompts.strip():
+            local_prompts = global_prompt
+        log.info(f"[LTXDirector] built {len(_segs)} segment prompts from timeline")
 
         # --- Build guide_data from image segments FIRST (to derive output dimensions) ---
         guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate}
