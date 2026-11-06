@@ -9003,7 +9003,8 @@ class TimelineEditor {
       updateWidgetValue(overrideWidget, !!this.node.properties.overrideAudio);
     }
 
-    if (this.localPromptsWidget) {
+    const lpInput = this.node.inputs?.find(i => i.name === "local_prompts");
+    if (this.localPromptsWidget && !(lpInput && lpInput.link)) {
       updateWidgetValue(this.localPromptsWidget, contiguousPrompts.join(" | "));
     }
     if (this.segmentLengthsWidget) {
