@@ -1105,7 +1105,7 @@ class LTXDirector(io.ComfyNode):
         log.info(f"[LTXDirector] execute RECEIVED global_prompt: {repr(global_prompt)}")
 
         # Build local_prompts from timeline segment prompts (| -joined), no widget/cache
-        _segs = tdata.get("motionSegments") or tdata.get("segments") or []
+        _segs = tdata.get("segments") or tdata.get("motionSegments") or []
         local_prompts = " | ".join(str(s.get("prompt") or "").strip() for s in _segs)
         if not local_prompts.strip():
             local_prompts = global_prompt
