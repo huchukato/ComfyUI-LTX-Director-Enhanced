@@ -89,7 +89,12 @@ def _enhance_prompt(llm, system, text, max_tokens=2048, seed=0):
     except TypeError:
         kwargs.pop("chat_template_kwargs", None)
         r = llm.create_chat_completion(**kwargs)
-    return (r["choices"][0].get("message", {}).get("content", "") or "").strip()
+    out = (r["choices"][0].get("message", {}).get("content", "") or "").strip()
+    if "</think>" in out:
+        out = out.split("</think>", 1)[1].strip()
+    elif "<think>" in out:
+        out = ""
+    return out
 
 def _gguf_choices():
     out = _catalog_choices()
