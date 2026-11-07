@@ -1295,7 +1295,17 @@ class LTXDirector(io.ComfyNode):
                     "Rewrite the user's rough ideas into polished prompts, preserving | as segment separator.")
                 enhanced_local = _enhance_prompt(llm, system, local_prompts or global_prompt)
                 if enhanced_local:
-                    local_prompts = enhanced_local
+                    _n = max(1, len(_segs))
+                    _parts = [p.strip() for p in enhanced_local.split("|") if p.strip()]
+                    if len(_parts) != _n and len(_parts) > _n:
+                        # model emitted extra | separators — regroup evenly back to N segments
+                        local_prompts = " | ".join(
+                            " ".join(_parts[i * len(_parts) // _n:(i + 1) * len(_parts) // _n]).strip()
+                            for i in range(_n))
+                    elif _parts:
+                        local_prompts = " | ".join(_parts[:_n]) if len(_parts) < _n else " | ".join(_parts)
+                    else:
+                        local_prompts = enhanced_local
                 log.info(f"[LTXDirector] enhanced local_prompts: {repr(local_prompts[:120])}")
             except Exception as e:
                 log.error(f"[LTXDirector] prompt enhance failed, using raw: {e}")
