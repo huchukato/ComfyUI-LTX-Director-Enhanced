@@ -76,11 +76,19 @@ def _load_llm(model_name):
     _LLM_CACHE[model_name] = llm
     return llm
 
-def _enhance_prompt(llm, system, text, max_tokens=1024, seed=0):
-    r = llm.create_chat_completion(
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": text}],
-        max_tokens=max_tokens, temperature=0.7, top_p=0.9, seed=seed,
-    )
+def _enhance_prompt(llm, system, text, max_tokens=2048, seed=0):
+    kwargs = dict(messages=[{"role": "system", "content": system},
+                            {"role": "user", "content": "/no_think\n" + text}],
+                  max_tokens=max_tokens, temperature=0.7, top_p=0.9, seed=seed)
+    try:
+        kwargs["chat_template_kwargs"] = {"enable_thinking": False}
+    except Exception:
+        pass
+    try:
+        r = llm.create_chat_completion(**kwargs)
+    except TypeError:
+        kwargs.pop("chat_template_kwargs", None)
+        r = llm.create_chat_completion(**kwargs)
     return (r["choices"][0].get("message", {}).get("content", "") or "").strip()
 
 def _gguf_choices():
@@ -1343,15 +1351,17 @@ class LTXDirector(io.ComfyNode):
                 if enhanced_local:
                     _n = max(1, len(_segs))
                     _parts = [p.strip() for p in enhanced_local.split("|") if p.strip()]
-                    if len(_parts) != _n and len(_parts) > _n:
-                        # model emitted extra | separators — regroup evenly back to N segments
-                        local_prompts = " | ".join(
+                    _final = ""
+                    if len(_parts) > _n:
+                        _final = " | ".join(
                             " ".join(_parts[i * len(_parts) // _n:(i + 1) * len(_parts) // _n]).strip()
                             for i in range(_n))
-                    elif _parts:
-                        local_prompts = " | ".join(_parts[:_n]) if len(_parts) < _n else " | ".join(_parts)
+                    elif len(_parts) == _n:
+                        _final = " | ".join(_parts)
+                    if len([p for p in _final.split("|") if p.strip()]) == _n:
+                        local_prompts = _final
                     else:
-                        local_prompts = enhanced_local
+                        log.warning(f"[LTXDirector] enhance produced unusable segment count — keeping raw prompts")
                 log.info(f"[LTXDirector] enhanced local_prompts: {repr(local_prompts[:120])}")
             except Exception as e:
                 log.error(f"[LTXDirector] prompt enhance failed, using raw: {e}")
