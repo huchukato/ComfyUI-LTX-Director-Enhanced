@@ -26,6 +26,23 @@ def _gguf_dir():
             return gg
     return None
 
+def _catalog():
+    for mod in __import__("sys").path:
+        pj = os.path.join(mod, "ComfyUI-QwenVL-Mod", "gguf_models.json")
+        if os.path.isfile(pj):
+            try:
+                return json.load(open(pj)).get("qwenVL_model", {})
+            except Exception:
+                return {}
+    return {}
+
+def _catalog_choices():
+    out = []
+    for k, v in _catalog().items():
+        for f in v.get("model_files", []):
+            out.append(f"{k} :: {f}")
+    return sorted(out)
+
 def _load_llm(model_name):
     if model_name in _LLM_CACHE:
         return _LLM_CACHE[model_name]
@@ -33,14 +50,20 @@ def _load_llm(model_name):
     d = _gguf_dir()
     if not d:
         raise RuntimeError("[LTXDirector] models/LLM/GGUF not found")
-    mmproj = os.path.join(d, "mmproj-BF16.gguf")
-    kwargs = dict(model_path=os.path.join(d, model_name), n_ctx=8192, n_gpu_layers=-1, verbose=False)
-    if os.path.isfile(mmproj):
-        try:
-            from llama_cpp.llama_chat_format import Llava16ChatHandler
-            kwargs["chat_handler"] = Llava16ChatHandler(clip_model_path=mmproj, verbose=False)
-        except Exception:
-            pass
+    fname = model_name.split("::")[-1].strip()
+    mpath = os.path.join(d, fname)
+    if not os.path.isfile(mpath):
+        repo_id = None
+        for k, v in _catalog().items():
+            if fname in v.get("model_files", []):
+                repo_id = v.get("repo_id") or f"{v.get('author','')}/{v.get('repo_name','')}"
+                break
+        if not repo_id:
+            raise RuntimeError(f"[LTXDirector] {fname} not in models/LLM/GGUF and not in catalog")
+        log.info(f"[LTXDirector] downloading {fname} from {repo_id} ...")
+        from huggingface_hub import hf_hub_download
+        mpath = hf_hub_download(repo_id=repo_id, filename=fname, local_dir=d)
+    kwargs = dict(model_path=mpath, n_ctx=8192, n_gpu_layers=-1, verbose=False)
     llm = Llama(**kwargs)
     _LLM_CACHE[model_name] = llm
     return llm
@@ -53,10 +76,13 @@ def _enhance_prompt(llm, system, text, max_tokens=1024, seed=0):
     return (r["choices"][0].get("message", {}).get("content", "") or "").strip()
 
 def _gguf_choices():
+    out = _catalog_choices()
+    if out:
+        return out
     d = _gguf_dir()
     if d:
         try:
-            files = sorted(f for f in os.listdir(d) if f.endswith(".gguf"))
+            files = sorted(f for f in os.listdir(d) if f.endswith(".gguf") and "mmproj" not in f)
             if files:
                 return files
         except Exception:
