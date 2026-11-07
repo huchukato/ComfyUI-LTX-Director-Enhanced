@@ -1,6 +1,6 @@
 [project]
-name = "WhatDreamsCost-ComfyUI"
-description = "A variety of custom ComfyUI nodes and workflows for creatives."
+name = "ltx-director-enhanced"
+description = "LTX Director Enhanced — keyframe timeline + prompt relay for multi-scene LTX 2.5 videos, with in-node QwenVL prompt enhancement. Fork of WhatDreamsCost's LTX Director."
 version = "2.0.5"
 license = {file = "LICENSE"} 
 # classifiers = [
@@ -28,8 +28,10 @@ Documentation = "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI/wiki"
 "Bug Tracker" = "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI/issues"
 
 [tool.comfy]
-PublisherId = "whatdreamscost"
-DisplayName = "WhatDreamsCost-ComfyUI"
+PublisherId = "huchukato"
+DisplayName = "LTX Director Enhanced"
+Icon = "https://raw.githubusercontent.com/huchukato/ComfyUI-LTX-Director-Enhanced/main/icon.png"
+Banner = "https://raw.githubusercontent.com/huchukato/ComfyUI-LTX-Director-Enhanced/main/banner.png"
 Icon = "https://raw.githubusercontent.com/WhatDreamsCost/MediaSyncer/refs/heads/main/Icon.png"
 includes = [] 
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility

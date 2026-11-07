@@ -1,3 +1,26 @@
+# 🎬 LTX Director Enhanced
+
+**Keyframe timeline + prompt relay for multi-scene [LTX 2.5](https://huggingface.co/Lightricks/LTX-2.5) videos in ComfyUI.**
+Drag stills onto the timeline, write a prompt per segment, enhance everything through
+QwenVL in one pass, render up to a minute of continuous video with native audio.
+
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![version](https://img.shields.io/badge/version-2.0.5-brightgreen)](pyproject.toml)
+[![Registry](https://img.shields.io/badge/ComfyUI_Registry-install_from_Manager-8A2BE2)](https://registry.comfy.org/publishers/huchukato/nodes/ltx-director-enhanced)
+[![stars](https://img.shields.io/github/stars/huchukato/ComfyUI-LTX-Director-Enhanced?style=social)](https://github.com/huchukato/ComfyUI-LTX-Director-Enhanced/stargazers)
+
+![LTX Director Enhanced](banner.png)
+
+## What's enhanced over the original
+
+- 🧠 **In-node QwenVL prompt enhancement** — the assembled global + segment prompts pass through a QwenVL GGUF enhancer before encoding: write rough ideas, get polished LTX prompts (`enhance` + `enhancer_model` + `enhancer_preset` inputs, `assembled_prompt` output to inspect the result)
+- 📋 **Catalog dropdown + auto-download** — `enhancer_model` lists the QwenVL-Mod GGUF catalog and downloads a missing model from Hugging Face on first use
+- 🎛️ **LTX 2.5-ready** — works with the LTX 2.5 encoder chain (no 2.3 text projection needed)
+
+> This is a fork of the [LTX Director](https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI)
+> by **WhatDreamsCost** — the timeline editor, prompt relay and retake system are theirs.
+> See the original README below for the full node documentation.
+
 # Overview
 
 This will be a collection of free resources for ComfyUI.
