@@ -27,8 +27,16 @@ def _gguf_dir():
     return None
 
 def _catalog():
-    for mod in __import__("sys").path:
-        pj = os.path.join(mod, "ComfyUI-QwenVL-Mod", "gguf_models.json")
+    import sys
+    cands = []
+    for mod in sys.path:
+        if not mod:
+            continue
+        if os.path.basename(mod) == "ComfyUI-QwenVL-Mod":
+            cands.append(os.path.join(mod, "gguf_models.json"))
+        cands.append(os.path.join(mod, "ComfyUI-QwenVL-Mod", "gguf_models.json"))
+        cands.append(os.path.join(mod, "custom_nodes", "ComfyUI-QwenVL-Mod", "gguf_models.json"))
+    for pj in cands:
         if os.path.isfile(pj):
             try:
                 return json.load(open(pj)).get("qwenVL_model", {})
@@ -108,10 +116,22 @@ def _preset_text(name):
     """Load a LTX text preset system prompt from QwenVL-Mod if present."""
     try:
         import sys
+        base = None
         for mod in sys.path:
-            pj = os.path.join(mod, "ComfyUI-QwenVL-Mod", "presets_remote", "ltx.json")
-            if not os.path.isfile(pj):
-                pj = os.path.join(mod, "ComfyUI-QwenVL-Mod", "presets", "ltx.json")
+            if os.path.basename(mod) == "ComfyUI-QwenVL-Mod":
+                base = mod
+                break
+            for sub in (os.path.join(mod, "ComfyUI-QwenVL-Mod"),
+                        os.path.join(mod, "custom_nodes", "ComfyUI-QwenVL-Mod")):
+                if os.path.isdir(sub):
+                    base = sub
+                    break
+            if base:
+                break
+        if not base:
+            return ""
+        for pj in (os.path.join(base, "presets_remote", "ltx.json"),
+                   os.path.join(base, "presets", "ltx.json")):
             if os.path.isfile(pj):
                 e = json.load(open(pj)).get("text", {}).get(name)
                 if isinstance(e, dict):
