@@ -22,10 +22,10 @@ license = {file = "LICENSE"}
 
 
 [project.urls]
-Repository = "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI"
+Repository = "https://github.com/huchukato/ComfyUI-LTX-Director-Enhanced"
 #  Used by Comfy Registry https://registry.comfy.org
-Documentation = "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI/wiki"
-"Bug Tracker" = "https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI/issues"
+Documentation = "https://github.com/huchukato/ComfyUI-LTX-Director-Enhanced"
+"Bug Tracker" = "https://github.com/huchukato/ComfyUI-LTX-Director-Enhanced/issues"
 
 [tool.comfy]
 PublisherId = "huchukato"
