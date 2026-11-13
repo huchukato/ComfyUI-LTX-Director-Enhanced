@@ -32,7 +32,6 @@ PublisherId = "huchukato"
 DisplayName = "LTX Director Enhanced"
 Icon = "https://raw.githubusercontent.com/huchukato/ComfyUI-LTX-Director-Enhanced/main/icon.png"
 Banner = "https://raw.githubusercontent.com/huchukato/ComfyUI-LTX-Director-Enhanced/main/banner.png"
-Icon = "https://raw.githubusercontent.com/WhatDreamsCost/MediaSyncer/refs/heads/main/Icon.png"
 includes = [] 
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
 
