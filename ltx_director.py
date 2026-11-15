@@ -77,6 +77,16 @@ def _load_llm(model_name):
     _LLM_CACHE[model_name] = llm
     return llm
 
+def _clean_part(p):
+    p = (p or "").replace("**", "")
+    prev = None
+    while prev != p:
+        prev = p
+        p = re.sub(r"^[\s>*_`#\-]+", "", p)
+        p = re.sub(r"(?i)^(?:segment\s*\d+|shot\s*\d+|prompt|revised[^:]*|audio|scene\s*\d+)\s*[:\-–—]\s*", "", p)
+    return p.strip()
+
+
 def _looks_like_planning(text):
     if not text:
         return False
@@ -1433,7 +1443,7 @@ class LTXDirector(io.ComfyNode):
                     "Rewrite the user's rough ideas into polished prompts, preserving | as segment separator.")
                 enhanced_local = _enhance_prompt(llm, system, local_prompts or global_prompt)
                 if enhanced_local:
-                    _parts = [p.strip() for p in enhanced_local.split("|") if p.strip()]
+                    _parts = [p for p in (_clean_part(x) for x in enhanced_local.split("|")) if p]
                     _final = ""
                     if len(_parts) > _n:
                         _final = " | ".join(
