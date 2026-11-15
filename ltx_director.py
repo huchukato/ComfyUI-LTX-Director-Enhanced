@@ -1165,10 +1165,16 @@ class LTXDirector(io.ComfyNode):
 
         # Build local_prompts from timeline segment prompts (| -joined), no widget/cache
         _segs = tdata.get("segments") or tdata.get("motionSegments") or []
-        local_prompts = " | ".join(str(s.get("prompt") or "").strip() for s in _segs)
+        _seg_prompts = [str(s.get("prompt") or "").strip() for s in _segs]
+        local_prompts = " | ".join(_seg_prompts)
+        # All segment prompts empty = the user gave one idea (global prompt): the enhancer
+        # splits it into one part per segment. "|"-joined empties keep the positions so an
+        # empty middle segment still maps to its own still.
+        auto_split = bool(_segs) and not any(_seg_prompts)
         if not local_prompts.strip():
             local_prompts = global_prompt
-        log.info(f"[LTXDirector] built {len(_segs)} segment prompts from timeline")
+        log.info(f"[LTXDirector] built {len(_segs)} segment prompts from timeline"
+                 + (" (auto-split)" if auto_split else ""))
 
         # --- Build guide_data from image segments FIRST (to derive output dimensions) ---
         guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate}
@@ -1350,11 +1356,28 @@ class LTXDirector(io.ComfyNode):
         if enhance and enhancer_model:
             try:
                 llm = _load_llm(enhancer_model)
-                system = _preset_text(enhancer_preset) or ("You are a cinematic video prompt enhancer. "
-                    "Rewrite the user's rough ideas into polished prompts, preserving | as segment separator.")
-                enhanced_local = _enhance_prompt(llm, system, local_prompts or global_prompt)
+                _n = max(1, len(_segs))
+                if auto_split and global_prompt.strip():
+                    # One idea, N segments: the preset's "keep the same number of
+                    # segments" rule cannot apply — it would return a single part.
+                    system = (
+                        "You split ONE rough video idea into scene prompts for LTX 2.5. "
+                        f"The video has exactly {_n} consecutive segments and the idea "
+                        "covers all of them in order. Rewrite it into exactly "
+                        f"{_n} polished cinematic paragraphs, one per segment, same "
+                        "order. Each part: subject, action, camera movement, lighting, "
+                        "atmosphere. Keep one consistent character/style description "
+                        "across parts. Preserve quoted dialogue verbatim inside its "
+                        "segment; add no speech to silent parts. End each part with "
+                        "its sound design. Separate parts with a single | "
+                        "(space-pipe-space). Fluent English only. No labels, no "
+                        "markdown, no shot numbers.")
+                    enhanced_local = _enhance_prompt(llm, system, global_prompt)
+                else:
+                    system = _preset_text(enhancer_preset) or ("You are a cinematic video prompt enhancer. "
+                        "Rewrite the user's rough ideas into polished prompts, preserving | as segment separator.")
+                    enhanced_local = _enhance_prompt(llm, system, local_prompts or global_prompt)
                 if enhanced_local:
-                    _n = max(1, len(_segs))
                     _parts = [p.strip() for p in enhanced_local.split("|") if p.strip()]
                     _final = ""
                     if len(_parts) > _n:
@@ -1365,6 +1388,11 @@ class LTXDirector(io.ComfyNode):
                         _final = " | ".join(_parts)
                     if len([p for p in _final.split("|") if p.strip()]) == _n:
                         local_prompts = _final
+                        if auto_split:
+                            # The idea now lives in the segment parts; leaving it in
+                            # global_prompt would prepend the whole story to every
+                            # segment in _encode_relay.
+                            global_prompt = ""
                     else:
                         log.warning(f"[LTXDirector] enhance produced unusable segment count — keeping raw prompts")
                 log.info(f"[LTXDirector] enhanced local_prompts: {repr(local_prompts[:120])}")
