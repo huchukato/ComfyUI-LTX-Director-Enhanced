@@ -110,6 +110,23 @@ def _split_idea(text, n):
     return " | ".join(parts[:n])
 
 
+def _extract_final(text):
+    """Heretic/uncensored models often emit chain-of-thought then the final
+    answer as the last block — prefer the last block containing a | separator,
+    else the last block. Strips markdown bold."""
+    blocks = [b.strip() for b in re.split(r"\n\s*\n+", text or "") if b.strip()]
+    if not blocks:
+        return ""
+    out = ""
+    for b in reversed(blocks):
+        if "|" in b:
+            out = b
+            break
+    if not out:
+        out = blocks[-1]
+    return out.replace("**", "").strip()
+
+
 def _enhance_prompt(llm, system, text, max_tokens=2048, seed=0):
     def _call(sys_prompt, user_text):
         kwargs = dict(messages=[{"role": "system", "content": sys_prompt},
@@ -123,20 +140,26 @@ def _enhance_prompt(llm, system, text, max_tokens=2048, seed=0):
             kwargs.pop("chat_template_kwargs", None)
             kwargs.pop("reasoning", None)
             r = llm.create_chat_completion(**kwargs)
-        out = (r["choices"][0].get("message", {}).get("content", "") or "").strip()
+        return (r["choices"][0].get("message", {}).get("content", "") or "").strip()
+
+    def _clean(raw):
+        out = raw
         if "</think>" in out:
             out = out.split("</think>", 1)[1].strip()
         elif "<think>" in out:
-            out = ""
+            return ""
+        if _looks_like_planning(out):
+            tail = _extract_final(out)
+            if tail and not _looks_like_planning(tail):
+                return tail
+            return ""
         return out
 
-    out = _call(system, text)
-    if _looks_like_planning(out):
+    out = _clean(_call(system, text))
+    if not out:
         retry_system = (system + "\nOutput ONLY the final rewritten prompts. "
                         "No analysis, no planning steps, no thinking, no markdown.")
-        out = _call(retry_system, text)
-        if _looks_like_planning(out):
-            return ""
+        out = _clean(_call(retry_system, text))
     return out
 
 def _gguf_choices():
