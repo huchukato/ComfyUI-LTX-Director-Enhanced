@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import json
+import re
 import base64
 import io as _io
 import math
@@ -76,24 +77,43 @@ def _load_llm(model_name):
     _LLM_CACHE[model_name] = llm
     return llm
 
+def _looks_like_planning(text):
+    if not text:
+        return False
+    return bool(
+        re.search(r"(?i)thinking process|let me (analyze|think|break)|step[- ]by[- ]step", text)
+        or re.search(r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?\s*(okay[,.:]?|first[,.:]?|next[,.:]?|then[,.:]?|wait[,.:]?|final\s+plan|final\s+check|final\s+output)\b", text)
+        or re.search(r"(?i)\b(i\s+(should|need|must|will|am\s+going\s+to|have\s+to))\b", text)
+    )
+
+
 def _enhance_prompt(llm, system, text, max_tokens=2048, seed=0):
-    kwargs = dict(messages=[{"role": "system", "content": system},
-                            {"role": "user", "content": "/no_think\n" + text}],
-                  max_tokens=max_tokens, temperature=0.7, top_p=0.9, seed=seed)
-    try:
+    def _call(sys_prompt, user_text):
+        kwargs = dict(messages=[{"role": "system", "content": sys_prompt},
+                                {"role": "user", "content": "/no_think\n" + user_text}],
+                      max_tokens=max_tokens, temperature=0.7, top_p=0.9, seed=seed)
         kwargs["chat_template_kwargs"] = {"enable_thinking": False}
-    except Exception:
-        pass
-    try:
-        r = llm.create_chat_completion(**kwargs)
-    except TypeError:
-        kwargs.pop("chat_template_kwargs", None)
-        r = llm.create_chat_completion(**kwargs)
-    out = (r["choices"][0].get("message", {}).get("content", "") or "").strip()
-    if "</think>" in out:
-        out = out.split("</think>", 1)[1].strip()
-    elif "<think>" in out:
-        out = ""
+        kwargs["reasoning"] = False
+        try:
+            r = llm.create_chat_completion(**kwargs)
+        except TypeError:
+            kwargs.pop("chat_template_kwargs", None)
+            kwargs.pop("reasoning", None)
+            r = llm.create_chat_completion(**kwargs)
+        out = (r["choices"][0].get("message", {}).get("content", "") or "").strip()
+        if "</think>" in out:
+            out = out.split("</think>", 1)[1].strip()
+        elif "<think>" in out:
+            out = ""
+        return out
+
+    out = _call(system, text)
+    if _looks_like_planning(out):
+        retry_system = (system + "\nOutput ONLY the final rewritten prompts. "
+                        "No analysis, no planning steps, no thinking, no markdown.")
+        out = _call(retry_system, text)
+        if _looks_like_planning(out):
+            return ""
     return out
 
 def _gguf_choices():
