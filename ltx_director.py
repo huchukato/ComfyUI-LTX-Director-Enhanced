@@ -87,6 +87,29 @@ def _looks_like_planning(text):
     )
 
 
+def _split_idea(text, n):
+    """Split ONE rough idea into n | -separated segment chunks: paragraphs
+    first, then sentences, distributed in order. Deterministic — the LLM only
+    has to polish/enrich each part, not invent the split."""
+    n = max(1, int(n))
+    paras = [p.strip() for p in re.split(r"\n\s*\n+", text or "") if p.strip()]
+    units = paras
+    if len(units) < n:
+        sents = [s.strip() for s in re.split(r"(?<=[.!?…])\s+", " ".join(paras)) if s.strip()]
+        if len(sents) > len(units):
+            units = sents
+    if len(units) >= n:
+        chunks = [[] for _ in range(n)]
+        for i, u in enumerate(units):
+            chunks[min(n - 1, i * n // len(units))].append(u)
+        parts = [" ".join(c).strip() for c in chunks]
+    else:
+        parts = units[:]
+    while len(parts) < n:
+        parts.append("")
+    return " | ".join(parts[:n])
+
+
 def _enhance_prompt(llm, system, text, max_tokens=2048, seed=0):
     def _call(sys_prompt, user_text):
         kwargs = dict(messages=[{"role": "system", "content": sys_prompt},
@@ -1378,25 +1401,14 @@ class LTXDirector(io.ComfyNode):
                 llm = _load_llm(enhancer_model)
                 _n = max(1, len(_segs))
                 if auto_split and global_prompt.strip():
-                    # One idea, N segments: the preset's "keep the same number of
-                    # segments" rule cannot apply — it would return a single part.
-                    system = (
-                        "You split ONE rough video idea into scene prompts for LTX 2.5. "
-                        f"The video has exactly {_n} consecutive segments and the idea "
-                        "covers all of them in order. Rewrite it into exactly "
-                        f"{_n} polished cinematic paragraphs, one per segment, same "
-                        "order. Each part: subject, action, camera movement, lighting, "
-                        "atmosphere. Keep one consistent character/style description "
-                        "across parts. Preserve quoted dialogue verbatim inside its "
-                        "segment; add no speech to silent parts. End each part with "
-                        "its sound design. Separate parts with a single | "
-                        "(space-pipe-space). Fluent English only. No labels, no "
-                        "markdown, no shot numbers.")
-                    enhanced_local = _enhance_prompt(llm, system, global_prompt)
-                else:
-                    system = _preset_text(enhancer_preset) or ("You are a cinematic video prompt enhancer. "
-                        "Rewrite the user's rough ideas into polished prompts, preserving | as segment separator.")
-                    enhanced_local = _enhance_prompt(llm, system, local_prompts or global_prompt)
+                    # One idea, N segments: split it deterministically first
+                    # (paragraphs/sentences), then let the preset polish each
+                    # |-separated part — asking the LLM to invent the split
+                    # proved unreliable (echoes / thinking / wrong counts).
+                    local_prompts = _split_idea(global_prompt, _n)
+                system = _preset_text(enhancer_preset) or ("You are a cinematic video prompt enhancer. "
+                    "Rewrite the user's rough ideas into polished prompts, preserving | as segment separator.")
+                enhanced_local = _enhance_prompt(llm, system, local_prompts or global_prompt)
                 if enhanced_local:
                     _parts = [p.strip() for p in enhanced_local.split("|") if p.strip()]
                     _final = ""
